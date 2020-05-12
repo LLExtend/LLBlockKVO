@@ -253,87 +253,6 @@ static void ll_dynaminKVOSetterId(id self, SEL _cmd, id value) {
     ll_dynamicExecBlock(self, oldValue, newValue, getterName);
 }
 
-
-
-//static void ll_dynamicKVOSetter(id self, SEL _cmd, void *value) {
-//    NSString *setterName = NSStringFromSelector(_cmd);
-//    NSString *getterName = ll_generateGetterForSetter(setterName);
-//
-//    LLEncodeType encodeType = LLEncodeType_id;
-//    id newValue = nil;
-//    id oldValue = [self valueForKey:getterName];
-//
-//    struct objc_super superclazz = {
-//        .receiver = self,
-//        .super_class = class_getSuperclass(object_getClass(self))
-//    };
-//
-//    // 属性列表
-//    unsigned int count = 0;
-//    objc_property_t *properties = class_copyPropertyList(class_getSuperclass(object_getClass(self)), &count);
-//    for (int i = 0; i < count; i++) {
-//
-//        objc_property_t property = properties[i];
-//        const char *name = property_getName(property);
-//
-//        NSString *propertyName = [NSString stringWithUTF8String:name];
-//        if ([propertyName isEqualToString:getterName]) {
-//            encodeType = ll_dynamicEncodeTypeHandle(property);
-//            switch (encodeType) {
-//                case LLEncodeType_id: {
-//                    newValue = (__bridge id)value;
-//                    void (*objc_msgSendSuperCasted)(void *, SEL, id) = (void *)objc_msgSendSuper;
-//                    objc_msgSendSuperCasted(&superclazz, _cmd, newValue);
-//                    break;
-//                }
-//                case LLEncodeType_int: {
-//                    newValue = [NSNumber numberWithInteger:(NSInteger)value];
-//                    void (*objc_msgSendSuperCasted)(void *, SEL, NSInteger) = (void *)objc_msgSendSuper;
-//                    objc_msgSendSuperCasted(&superclazz, _cmd, (NSInteger)value);
-//                    break;
-//                }
-//                case LLEncodeType_uint: {
-//                    newValue = [NSNumber numberWithUnsignedInteger:(NSUInteger)value];
-//                    void (*objc_msgSendSuperCasted)(void *, SEL, NSUInteger) = (void *)objc_msgSendSuper;
-//                    objc_msgSendSuperCasted(&superclazz, _cmd, (NSUInteger)value);
-//                    break;
-//                }
-//                case LLEncodeType_bool: {
-//                    newValue = [NSNumber numberWithBool:(BOOL)value];
-//                    void (*objc_msgSendSuperCasted)(void *, SEL, BOOL) = (void *)objc_msgSendSuper;
-//                    objc_msgSendSuperCasted(&superclazz, _cmd, (BOOL)value);
-//                    break;
-//                }
-//                case LLEncodeType_char: {
-//                    newValue = [NSNumber numberWithChar:(char)value];
-//                    void (*objc_msgSendSuperCasted)(void *, SEL, char) = (void *)objc_msgSendSuper;
-//                    objc_msgSendSuperCasted(&superclazz, _cmd, (char)value);
-//                    break;
-//                }
-//                case LLEncodeType_uchar: {
-//                    newValue = [NSNumber numberWithUnsignedChar:(unsigned char)value];
-//                    void (*objc_msgSendSuperCasted)(void *, SEL, unsigned char) = (void *)objc_msgSendSuper;
-//                    objc_msgSendSuperCasted(&superclazz, _cmd, (unsigned char)value);
-//                    break;
-//                }
-//                case LLEncodeType_float:
-//                    break;
-//            }
-//        }
-//    }
-//
-//    ll_dynamicExecBlock(self, oldValue, newValue, getterName);
-//
-////    for (LLObserverInfoItem *each in observers.allValues) {
-////        if ([each.key isEqualToString:getterName]) {
-////            dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-////                each.block(self, oldValue, newValue);
-////            });
-////        }
-////    }
-//}
-
-
 @implementation NSObject (LLBlockKVO)
 #pragma mark - public method
 - (void)ll_addObserver:(id)observer
@@ -382,11 +301,7 @@ static void ll_dynaminKVOSetterId(id self, SEL _cmd, id value) {
     } else {
         class_replaceMethod(oriClass, setterSel, [self getMethodImplementationWithEncodeType:encodeType], method_getTypeEncoding(setterMethod));
     }
-// 效果等同于 111-115行代码
-//    if (![self hasExistSel:setterSel]) {
-//        class_addMethod(oriClass, setterSel, (IMP)ll_dynamicKVOSetter, method_getTypeEncoding(setterMethod));
-//    }
-    
+
     LLObserverInfoItem *item = [[LLObserverInfoItem alloc] initWithObserver:observer key:key block:block];
     NSMutableDictionary *observers = objc_getAssociatedObject(self, (__bridge const void *)(kLLBlcokKVOAssociatedObservers));
     if (!observers) {
@@ -475,8 +390,6 @@ static void ll_dynaminKVOSetterId(id self, SEL _cmd, id value) {
     Class oriClass = object_getClass(self);
     Class dynClass = objc_allocateClassPair(oriClass, dynamicKVOClassName.UTF8String, 0);
     
-//    class_addMethod(dynClass, @selector(class), (IMP)ll_dynamicKVOClass, method_getTypeEncoding(class_getInstanceMethod(oriClass, @selector(class))) );
-    
     objc_registerClassPair(dynClass);
     
     return dynClass;
@@ -488,25 +401,6 @@ static void ll_dynaminKVOSetterId(id self, SEL _cmd, id value) {
 - (NSString *)generateKeyWithObserver:(id)observer key:(NSString *)key {
     // 生成规则 observer内存地址 + self 内存地址 + kLLGenerateAssistSuffixKey + key
     return [NSString stringWithFormat:@"%p%p%@%@",observer,self,kLLGenerateAssistSuffixKey,key];
-}
-
-- (BOOL)hasExistSel:(SEL)sel {
-    Class class = object_getClass(self);
-    unsigned int methodCount = 0;
-    Method *methodList = class_copyMethodList(class, &methodCount);
-    
-    BOOL hasExistSel = NO;
-    
-    for (unsigned int i = 0; i < methodCount; i++) {
-        SEL thisSelector = method_getName(methodList[i]);
-        if (thisSelector == sel) {
-            hasExistSel = YES;
-            break;
-        }
-    }
-       
-    free(methodList);
-    return hasExistSel;
 }
 
 @end
